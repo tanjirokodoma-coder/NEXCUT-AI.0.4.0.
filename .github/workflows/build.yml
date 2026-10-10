@@ -1,0 +1,561 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
+      LC_ALL: C.UTF-8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create project files
+        run: |
+          cat > build.gradle.kts <<'EOF_NEX'
+          plugins {
+              id("com.android.application") version "8.7.3" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+          }
+          EOF_NEX
+          cat > settings.gradle.kts <<'EOF_NEX'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "NEXCUT AI"
+          include(":app")
+          EOF_NEX
+          cat > gradle.properties <<'EOF_NEX'
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          EOF_NEX
+          mkdir -p app
+          cat > app/build.gradle.kts <<'EOF_NEX'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.nexcut.ai"
+              compileSdk = 35
+
+              defaultConfig {
+                  applicationId = "com.nexcut.ai"
+                  minSdk = 26
+                  targetSdk = 35
+                  versionCode = 4
+                  versionName = "0.4.0"
+              }
+          }
+
+          dependencies {
+              implementation("androidx.core:core-ktx:1.15.0")
+              implementation("androidx.media3:media3-common:1.5.1")
+              implementation("androidx.media3:media3-transformer:1.5.1")
+              implementation("androidx.media3:media3-effect:1.5.1")
+          }
+          EOF_NEX
+          mkdir -p app/src/main
+          cat > app/src/main/AndroidManifest.xml <<'EOF_NEX'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+              <application
+                  android:allowBackup="true"
+                  android:label="NEXCUT AI"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher_round"
+                  android:theme="@android:style/Theme.Material.NoActionBar"
+                  android:supportsRtl="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF_NEX
+          mkdir -p app/src/main/res/values
+          cat > app/src/main/res/values/colors.xml <<'EOF_NEX'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <color name="nexcut_icon_background">#0F0C1F</color>
+          </resources>
+          EOF_NEX
+          mkdir -p app/src/main/res/drawable
+          cat > app/src/main/res/drawable/nexcut_icon_foreground.xml <<'EOF_NEX'
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#995BFF" android:pathData="M27,24 L51,36 L51,51 L27,64 Z"/>
+              <path android:fillColor="#30E7FF" android:pathData="M47,29 L81,54 L47,79 L54,54 Z"/>
+              <path android:fillColor="#140E26" android:pathData="M50,43 L63,54 L50,65 Z"/>
+              <path android:fillColor="#D2BEFF" android:pathData="M22,21 L34,21 L34,24 L25,24 L25,33 L22,33 Z"/>
+              <path android:fillColor="#57F5FF" android:pathData="M74,75 L86,75 L86,78 L77,78 L77,87 L74,87 Z"/>
+          </vector>
+          EOF_NEX
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'EOF_NEX'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/nexcut_icon_background"/>
+              <foreground android:drawable="@drawable/nexcut_icon_foreground"/>
+          </adaptive-icon>
+          EOF_NEX
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml <<'EOF_NEX'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/nexcut_icon_background"/>
+              <foreground android:drawable="@drawable/nexcut_icon_foreground"/>
+          </adaptive-icon>
+          EOF_NEX
+          mkdir -p app/src/main/java/com/nexcut/ai
+          cat > app/src/main/java/com/nexcut/ai/MainActivity.kt <<'EOF_NEX'
+          package com.nexcut.ai
+
+          import android.app.Activity
+          import android.app.AlertDialog
+          import android.content.ContentValues
+          import android.content.Intent
+          import android.net.Uri
+          import android.os.Build
+          import android.os.Bundle
+          import android.os.Environment
+          import android.provider.MediaStore
+          import android.provider.OpenableColumns
+          import android.graphics.Color
+          import android.graphics.Typeface
+          import android.view.Gravity
+          import android.view.View
+          import android.view.ViewGroup
+          import android.widget.*
+          import android.graphics.drawable.GradientDrawable
+          import android.Manifest
+          import android.content.pm.PackageManager
+          import androidx.core.app.ActivityCompat
+          import androidx.core.content.ContextCompat
+          import androidx.media3.common.MediaItem
+          import androidx.media3.common.Effect
+          import androidx.media3.transformer.Composition
+          import androidx.media3.transformer.EditedMediaItem
+          import androidx.media3.transformer.ExportException
+          import androidx.media3.transformer.ExportResult
+          import androidx.media3.transformer.Effects
+          import androidx.media3.transformer.Transformer
+          import androidx.media3.effect.Brightness
+          import androidx.media3.effect.Contrast
+          import androidx.media3.effect.Saturation
+          import java.io.File
+          import java.io.FileInputStream
+          import java.io.OutputStream
+
+          class MainActivity : Activity() {
+              private val bg = Color.rgb(13, 14, 19)
+              private val panel = Color.rgb(25, 27, 36)
+              private val muted = Color.rgb(164, 168, 185)
+              private val purple = Color.rgb(151, 93, 255)
+              private val cyan = Color.rgb(93, 218, 255)
+              private var selectedVideo: Uri? = null
+              private lateinit var status: TextView
+              private lateinit var prompt: EditText
+              private lateinit var trimStartInput: EditText
+              private lateinit var trimEndInput: EditText
+              private lateinit var progress: ProgressBar
+              private lateinit var exportButton: TextView
+              private var chosenStyle = Style.NATURAL
+              private var isExporting = false
+              private var lastOutput: File? = null
+              private var selectedVideoSizeBytes: Long? = null
+              private val maxInputVideoBytes = 5_000_000_000L // 5 GB (decimal)
+
+              private enum class Style { NATURAL, CINEMATIC, COOL, WARM, BRIGHT, MONO }
+              private data class EditPlan(val style: Style, val explanation: String)
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  window.statusBarColor = bg
+                  window.navigationBarColor = bg
+                  window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
+
+                  val scroll = ScrollView(this).apply { setBackgroundColor(bg) }
+                  val layout = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setPadding(dp(20), dp(22), dp(20), dp(30))
+                  }
+                  scroll.addView(layout)
+                  setContentView(scroll)
+
+                  val brandRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                  val logo = TextView(this).apply {
+                      text = "N"; textSize = 22f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                      setTextColor(Color.WHITE); background = rounded(purple, 16)
+                  }
+                  brandRow.addView(logo, LinearLayout.LayoutParams(dp(46), dp(46)))
+                  val brandText = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0) }
+                  brandText.addView(text("NEXCUT AI", 20f, Color.WHITE, true))
+                  brandText.addView(text("YOUR PERSONAL VIDEO EDITOR", 10f, cyan, true))
+                  brandRow.addView(brandText, LinearLayout.LayoutParams(0, -2, 1f))
+                  val badge = text("PROTOTYPE", 10f, cyan, true).apply {
+                      background = rounded(Color.rgb(27, 50, 62), 20); setPadding(dp(10), dp(7), dp(10), dp(7))
+                  }
+                  brandRow.addView(badge)
+                  layout.addView(brandRow)
+
+                  val hero = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(22), dp(18), dp(22))
+                      background = rounded(Color.rgb(36, 28, 58), 22)
+                  }
+                  hero.addView(text("\u2726  VIDEO EDITING LAB", 11f, cyan, true))
+                  hero.addView(text("\u0641\u0643\u0631\u062A\u0643\u060C \u062B\u0645\n\u0645\u0648\u0646\u062A\u0627\u062C \u0641\u0639\u0644\u064A.", 29f, Color.WHITE, true).apply { setPadding(0, dp(12), 0, dp(8)) })
+                  hero.addView(text("\u0623\u0648\u0627\u0645\u0631 \u0639\u0631\u0628\u064A\u0629 \u0628\u0633\u064A\u0637\u0629 \u062A\u062A\u062D\u0648\u0644 \u0625\u0644\u0649 \u0641\u0644\u0627\u062A\u0631 \u0641\u0639\u0644\u064A\u0629 \u0648\u062A\u0635\u062F\u064A\u0631 \u0641\u064A\u062F\u064A\u0648. \u0644\u0627 \u0646\u0636\u064A\u0641 \u0645\u0648\u0633\u064A\u0642\u0649 \u062A\u0644\u0642\u0627\u0626\u064A\u064B\u0627.", 14f, Color.rgb(218, 216, 230), false))
+                  layout.addView(hero, marginTop(22))
+
+                  layout.addView(text("1 \u00B7 \u0627\u062E\u062A\u0631 \u0641\u064A\u062F\u064A\u0648", 20f, Color.WHITE, true), marginTop(24))
+                  layout.addView(text("\u0627\u062E\u062A\u0631 \u0645\u0642\u0637\u0639\u064B\u0627 \u0645\u0646 \u0647\u0627\u062A\u0641\u0643 \u0644\u062A\u0637\u0628\u064A\u0642 \u062A\u0639\u062F\u064A\u0644\u0627\u062A \u0639\u0644\u064A\u0647.", 13f, muted, false), marginTop(5))
+                  val choose = button("\u0627\u062E\u062A\u064A\u0627\u0631 \u0641\u064A\u062F\u064A\u0648", purple)
+                  choose.setOnClickListener { pickVideo() }
+                  layout.addView(choose, marginTop(12))
+
+                  status = text("\u0644\u0645 \u064A\u062A\u0645 \u0627\u062E\u062A\u064A\u0627\u0631 \u0641\u064A\u062F\u064A\u0648 \u0628\u0639\u062F", 13f, muted, false).apply {
+                      setPadding(dp(14), dp(13), dp(14), dp(13)); background = rounded(panel, 14)
+                  }
+                  layout.addView(status, marginTop(10))
+
+                  layout.addView(text("\u0642\u0635\u0651 \u0627\u0644\u0641\u064A\u062F\u064A\u0648 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", 18f, Color.WHITE, true), marginTop(20))
+                  layout.addView(text("\u0623\u062F\u062E\u0644 \u0627\u0644\u0648\u0642\u062A \u0628\u0627\u0644\u062B\u0648\u0627\u0646\u064A. \u0627\u062A\u0631\u0643 \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0641\u0627\u0631\u063A\u0629 \u0644\u0644\u0627\u062D\u062A\u0641\u0627\u0638 \u0628\u0628\u0642\u064A\u0629 \u0627\u0644\u0641\u064A\u062F\u064A\u0648.", 12f, muted, false), marginTop(5))
+                  val trimRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                  trimStartInput = EditText(this).apply {
+                      hint = "\u0627\u0644\u0628\u062F\u0627\u064A\u0629: 0 \u062B\u0627\u0646\u064A\u0629"; setHintTextColor(muted); setTextColor(Color.WHITE); textSize = 13f
+                      inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+                      setPadding(dp(10), dp(10), dp(10), dp(10)); background = rounded(Color.rgb(39, 41, 52), 12)
+                  }
+                  trimEndInput = EditText(this).apply {
+                      hint = "\u0627\u0644\u0646\u0647\u0627\u064A\u0629: \u0627\u062E\u062A\u064A\u0627\u0631\u064A"; setHintTextColor(muted); setTextColor(Color.WHITE); textSize = 13f
+                      inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+                      setPadding(dp(10), dp(10), dp(10), dp(10)); background = rounded(Color.rgb(39, 41, 52), 12)
+                  }
+                  trimRow.addView(trimStartInput, LinearLayout.LayoutParams(0, dp(52), 1f))
+                  trimRow.addView(View(this), LinearLayout.LayoutParams(dp(8), 1))
+                  trimRow.addView(trimEndInput, LinearLayout.LayoutParams(0, dp(52), 1f))
+                  layout.addView(trimRow, marginTop(10))
+
+                  layout.addView(text("2 \u00B7 \u0627\u062E\u062A\u0631 \u0623\u0633\u0644\u0648\u0628\u064B\u0627", 20f, Color.WHITE, true), marginTop(24))
+                  val styleGrid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                  val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                  row1.addView(styleButton("\u0637\u0628\u064A\u0639\u064A", Style.NATURAL), LinearLayout.LayoutParams(0, dp(48), 1f))
+                  row1.addView(View(this), LinearLayout.LayoutParams(dp(8), 1))
+                  row1.addView(styleButton("\u0633\u064A\u0646\u0645\u0627\u0626\u064A", Style.CINEMATIC), LinearLayout.LayoutParams(0, dp(48), 1f))
+                  val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                  row2.addView(styleButton("\u0628\u0627\u0631\u062F", Style.COOL), LinearLayout.LayoutParams(0, dp(48), 1f))
+                  row2.addView(View(this), LinearLayout.LayoutParams(dp(8), 1))
+                  row2.addView(styleButton("\u062F\u0627\u0641\u0626", Style.WARM), LinearLayout.LayoutParams(0, dp(48), 1f))
+                  val row3 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                  row3.addView(styleButton("\u062A\u0641\u062A\u064A\u062D", Style.BRIGHT), LinearLayout.LayoutParams(0, dp(48), 1f))
+                  row3.addView(View(this), LinearLayout.LayoutParams(dp(8), 1))
+                  row3.addView(styleButton("\u0623\u0628\u064A\u0636 \u0648\u0623\u0633\u0648\u062F", Style.MONO), LinearLayout.LayoutParams(0, dp(48), 1f))
+                  styleGrid.addView(row1); styleGrid.addView(row2, marginTop(8)); styleGrid.addView(row3, marginTop(8))
+                  layout.addView(styleGrid, marginTop(12))
+
+                  layout.addView(text("3 \u00B7 \u0623\u0648 \u0627\u0643\u062A\u0628 \u0637\u0644\u0628\u0643", 20f, Color.WHITE, true), marginTop(24))
+                  prompt = EditText(this).apply {
+                      hint = "\u0645\u062B\u0627\u0644: \u062E\u0644\u0651\u064A \u0627\u0644\u0641\u064A\u062F\u064A\u0648 \u0633\u064A\u0646\u0645\u0627\u0626\u064A\u060C \u0623\u0648 \u0627\u0641\u062A\u062D \u0627\u0644\u0625\u0636\u0627\u0621\u0629 \u0634\u0648\u064A..."
+                      setHintTextColor(muted); setTextColor(Color.WHITE); textSize = 14f; minLines = 3
+                      gravity = Gravity.TOP; setPadding(dp(13), dp(12), dp(13), dp(12)); background = rounded(Color.rgb(39, 41, 52), 13)
+                  }
+                  layout.addView(prompt, marginTop(10))
+                  val interpret = button("\u0641\u0647\u0645 \u0627\u0644\u0623\u0645\u0631 \u0648\u062A\u062D\u062F\u064A\u062F \u0627\u0644\u062A\u0639\u062F\u064A\u0644", Color.rgb(55, 48, 78))
+                  interpret.setOnClickListener { interpretPrompt() }
+                  layout.addView(interpret, marginTop(10))
+
+                  val planText = text("\u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u062D\u0627\u0644\u064A: \u0637\u0628\u064A\u0639\u064A \u2014 \u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0635\u062F\u064A\u0631 \u0628\u0639\u062F", 13f, cyan, false).apply {
+                      setPadding(dp(13), dp(12), dp(13), dp(12)); background = rounded(panel, 12)
+                  }
+                  planStatus = planText
+                  layout.addView(planText, marginTop(12))
+
+                  progress = ProgressBar(this).apply { visibility = View.GONE; isIndeterminate = true }
+                  layout.addView(progress, marginTop(12))
+                  exportButton = button("\u062A\u0637\u0628\u064A\u0642 \u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0648\u062D\u0641\u0638 \u0627\u0644\u0641\u064A\u062F\u064A\u0648", purple).apply { setOnClickListener { exportEditedVideo() } }
+                  layout.addView(exportButton, marginTop(12))
+
+                  layout.addView(text("\u0645\u0627 \u0627\u0644\u0630\u064A \u064A\u0639\u0645\u0644 \u0641\u064A \u0647\u0630\u0647 \u0627\u0644\u0646\u0633\u062E\u0629\u061F", 16f, Color.WHITE, true), marginTop(24))
+                  layout.addView(text("\u2022 \u0627\u062E\u062A\u064A\u0627\u0631 \u0641\u064A\u062F\u064A\u0648 \u0645\u0646 \u0627\u0644\u0647\u0627\u062A\u0641\n\u2022 \u0641\u0644\u0627\u062A\u0631 \u0641\u0639\u0644\u064A\u0629 \u0644\u0644\u0623\u0644\u0648\u0627\u0646 \u0648\u0627\u0644\u062A\u0628\u0627\u064A\u0646 \u0648\u0627\u0644\u0625\u0636\u0627\u0621\u0629\n\u2022 \u0642\u0635\u0651 \u0627\u0644\u0628\u062F\u0627\u064A\u0629 \u0648\u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0628\u0627\u0644\u062B\u0648\u0627\u0646\u064A\n\u2022 \u062A\u0641\u0633\u064A\u0631 \u0645\u062D\u0644\u064A \u0645\u062D\u062F\u0648\u062F \u0644\u0628\u0639\u0636 \u0623\u0648\u0627\u0645\u0631 \u0627\u0644\u0639\u0631\u0628\u064A\u0629\n\u2022 \u062A\u0635\u062F\u064A\u0631 \u0646\u0633\u062E\u0629 \u062C\u062F\u064A\u062F\u0629 \u0625\u0644\u0649 Movies/NEXCUT_AI\n\u2022 \u0644\u0627 \u062A\u064F\u0636\u0627\u0641 \u0645\u0648\u0633\u064A\u0642\u0649 \u062A\u0644\u0642\u0627\u0626\u064A\u064B\u0627\n\n\u0645\u0627 \u064A\u0632\u0627\u0644 \u0646\u0645\u0648\u0630\u062C \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064A \u0627\u0644\u0633\u062D\u0627\u0628\u064A\u060C \u0648\u062A\u062D\u0644\u064A\u0644 \u0627\u0644\u0645\u0634\u0627\u0647\u062F \u0627\u0644\u0630\u0643\u064A\u060C \u0648\u0627\u0644\u0642\u0635\u0651 \u0627\u0644\u062A\u0644\u0642\u0627\u0626\u064A \u0627\u0644\u0645\u0628\u0646\u064A \u0639\u0644\u0649 \u0627\u0644\u0645\u062D\u062A\u0648\u0649\u060C \u0648\u0627\u0644\u0627\u0646\u062A\u0642\u0627\u0644\u0627\u062A \u0627\u0644\u0645\u062A\u0642\u062F\u0645\u0629 \u063A\u064A\u0631 \u0645\u062F\u0645\u062C\u0629. \u064A\u062C\u0628 \u0628\u0646\u0627\u0621 \u0627\u0644\u062A\u0637\u0628\u064A\u0642 \u0648\u0627\u062E\u062A\u0628\u0627\u0631\u0647 \u0639\u0644\u0649 \u062C\u0647\u0627\u0632 \u0641\u0639\u0644\u064A.", 12f, muted, false), marginTop(8))
+              }
+
+              private lateinit var planStatus: TextView
+
+              private fun styleButton(label: String, style: Style): TextView = button(label, if (chosenStyle == style) Color.rgb(70, 48, 112) else panel).apply {
+                  setOnClickListener {
+                      chosenStyle = style
+                      planStatus.text = "\u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u062D\u0627\u0644\u064A: ${styleArabic(style)}. \u0627\u0636\u063A\u0637 \u062A\u0637\u0628\u064A\u0642 \u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0648\u062D\u0641\u0638 \u0627\u0644\u0641\u064A\u062F\u064A\u0648 \u0644\u062A\u0646\u0641\u064A\u0630\u0647."
+                      Toast.makeText(this@MainActivity, "\u062A\u0645 \u0627\u062E\u062A\u064A\u0627\u0631: ${styleArabic(style)}", Toast.LENGTH_SHORT).show()
+                  }
+              }
+
+              private fun interpretPrompt() {
+                  val raw = prompt.text.toString().trim().lowercase()
+                  if (raw.isEmpty()) {
+                      Toast.makeText(this, "\u0627\u0643\u062A\u0628 \u0623\u0645\u0631 \u0627\u0644\u0645\u0648\u0646\u062A\u0627\u062C \u0623\u0648\u0644\u064B\u0627", Toast.LENGTH_SHORT).show(); return
+                  }
+                  var understoodSomething = false
+                  // Local command parsing: supports basic trim requests alongside a look/style request.
+                  val keepFirstSeconds = Regex("(?:\u0627\u062D\u062A\u0641\u0638|\u062E\u0644\u064A|\u062E\u0644\u0651\u064A|\u0627\u062C\u0639\u0644)\\s*(?:\u0628)?(?:\u0623\u0648\u0644|\u0627\u0648\u0644)\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:\u062B\u0627\u0646\u064A\u0629|\u062B\u0648\u0627\u0646\u064A|\u062B\u0627\u0646\u064A\u0647|sec|seconds?)").find(raw)
+                  if (keepFirstSeconds != null) {
+                      trimStartInput.setText("0")
+                      trimEndInput.setText(keepFirstSeconds.groupValues[1].replace(',', '.'))
+                      understoodSomething = true
+                  }
+                  val startSeconds = Regex("(?:\u0627\u0628\u062F\u0623|\u0627\u0628\u062F\u0627|\u0627\u0628\u062F\u0623 \u0627\u0644\u0641\u064A\u062F\u064A\u0648|\u0645\u0646)\\s*(?:\u0645\u0646)?\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:\u062B\u0627\u0646\u064A\u0629|\u062B\u0648\u0627\u0646\u064A|\u062B\u0627\u0646\u064A\u0647|sec|seconds?)").find(raw)
+                  if (startSeconds != null) {
+                      trimStartInput.setText(startSeconds.groupValues[1].replace(',', '.'))
+                      understoodSomething = true
+                  }
+                  val style = when {
+                      listOf("\u0633\u064A\u0646\u0645\u0627\u0626\u064A", "cinematic", "film look", "\u0641\u064A\u0644\u0645").any { raw.contains(it) } -> Style.CINEMATIC
+                      listOf("\u0628\u0627\u0631\u062F", "\u0623\u0632\u0631\u0642", "\u0627\u0632\u0631\u0642", "cool", "cold").any { raw.contains(it) } -> Style.COOL
+                      listOf("\u062F\u0627\u0641\u0626", "\u062F\u0627\u0641\u064A", "warm", "\u0630\u0647\u0628\u064A", "golden").any { raw.contains(it) } -> Style.WARM
+                      listOf("\u0627\u0641\u062A\u062D", "\u0623\u0641\u062A\u062D", "\u062A\u0641\u062A\u064A\u062D", "\u0623\u0641\u062A\u062D \u0627\u0644\u0625\u0636\u0627\u0621\u0629", "bright", "brighter", "lighten").any { raw.contains(it) } -> Style.BRIGHT
+                      listOf("\u0623\u0628\u064A\u0636 \u0648\u0623\u0633\u0648\u062F", "\u0627\u0628\u064A\u0636 \u0648\u0627\u0633\u0648\u062F", "\u0623\u0628\u064A\u0636 \u0648 \u0623\u0633\u0648\u062F", "black and white", "monochrome", "\u0623\u0628\u064A\u0636/\u0623\u0633\u0648\u062F").any { raw.contains(it) } -> Style.MONO
+                      listOf("\u0637\u0628\u064A\u0639\u064A", "natural", "\u0628\u062F\u0648\u0646 \u0641\u0644\u062A\u0631", "original").any { raw.contains(it) } -> Style.NATURAL
+                      else -> null
+                  }
+                  if (style != null) {
+                      chosenStyle = style
+                      understoodSomething = true
+                  }
+                  if (!understoodSomething) {
+                      AlertDialog.Builder(this).setTitle("\u0644\u0645 \u0623\u0641\u0647\u0645 \u0627\u0644\u0623\u0645\u0631 \u0628\u0627\u0644\u0643\u0627\u0645\u0644")
+                          .setMessage("\u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u0627\u0644\u0645\u062D\u0644\u064A\u0629 \u0627\u0644\u0645\u062F\u0639\u0648\u0645\u0629: \u0633\u064A\u0646\u0645\u0627\u0626\u064A\u060C \u0628\u0627\u0631\u062F\u060C \u062F\u0627\u0641\u0626\u060C \u062A\u0641\u062A\u064A\u062D\u060C \u0623\u0628\u064A\u0636 \u0648\u0623\u0633\u0648\u062F\u060C \u0637\u0628\u064A\u0639\u064A\u060C \u0623\u0648 \u0627\u062D\u062A\u0641\u0638 \u0628\u0623\u0648\u0644 \u0639\u062F\u062F \u0645\u0646 \u0627\u0644\u062B\u0648\u0627\u0646\u064A / \u0627\u0628\u062F\u0623 \u0645\u0646 \u0639\u062F\u062F \u062B\u0648\u0627\u0646\u064D. \u0627\u0644\u062A\u062D\u0644\u064A\u0644 \u0627\u0644\u062D\u0631 \u0627\u0644\u0645\u062A\u0642\u062F\u0645 \u064A\u062D\u062A\u0627\u062C \u0631\u0628\u0637 \u0646\u0645\u0648\u0630\u062C \u0630\u0643\u0627\u0621 \u0627\u0635\u0637\u0646\u0627\u0639\u064A \u0639\u0628\u0631 \u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A.")
+                          .setPositiveButton("\u062D\u0633\u0646\u064B\u0627", null).show()
+                      return
+                  }
+                  val trimNote = if (keepFirstSeconds != null || startSeconds != null) " \u0648\u062A\u0645 \u0636\u0628\u0637 \u0627\u0644\u0642\u0635\u0651" else ""
+                  planStatus.text = "\u062A\u0645 \u062A\u0641\u0633\u064A\u0631 \u0637\u0644\u0628\u0643 \u0645\u062D\u0644\u064A\u064B\u0627$trimNote${if (style != null) " \u2014 ${styleArabic(style)}" else ""}. \u0631\u0627\u062C\u0639 \u0623\u0648\u0642\u0627\u062A \u0627\u0644\u0642\u0635\u0651 \u0642\u0628\u0644 \u0627\u0644\u062A\u0635\u062F\u064A\u0631."
+              }
+
+              private fun pickVideo() {
+                  val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                      addCategory(Intent.CATEGORY_OPENABLE); type = "video/*"
+                      addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                  }
+                  startActivityForResult(intent, 101)
+              }
+
+              @Deprecated("Deprecated by Android, kept for compatibility with this prototype")
+              override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+                  super.onActivityResult(requestCode, resultCode, data)
+                  if (requestCode == 101 && resultCode == RESULT_OK) {
+                      selectedVideo = data?.data
+                      selectedVideoSizeBytes = null
+                      selectedVideo?.let { uri ->
+                          try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+                          selectedVideoSizeBytes = queryVideoSize(uri)
+                          val sizeText = selectedVideoSizeBytes?.let { formatBytes(it) } ?: "\u0627\u0644\u062D\u062C\u0645 \u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641"
+                          status.text = "\u062A\u0645 \u0627\u062E\u062A\u064A\u0627\u0631 \u0627\u0644\u0641\u064A\u062F\u064A\u0648.\n\u0627\u0644\u062D\u062C\u0645: $sizeText\n\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0641\u064A \u0647\u0630\u0647 \u0627\u0644\u0646\u0633\u062E\u0629: 5 GB. \u0644\u0627 \u064A\u062A\u0645 \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0641\u064A\u062F\u064A\u0648 \u0643\u0627\u0645\u0644\u064B\u0627 \u0625\u0644\u0649 \u0627\u0644\u0630\u0627\u0643\u0631\u0629."
+                          Toast.makeText(this, "\u062A\u0645 \u0627\u062E\u062A\u064A\u0627\u0631 \u0627\u0644\u0641\u064A\u062F\u064A\u0648 \u2022 $sizeText", Toast.LENGTH_LONG).show()
+                      }
+                  }
+              }
+
+              private fun exportEditedVideo() {
+                  val uri = selectedVideo
+                  if (uri == null) {
+                      Toast.makeText(this, "\u0627\u062E\u062A\u0631 \u0641\u064A\u062F\u064A\u0648 \u0623\u0648\u0644\u064B\u0627", Toast.LENGTH_SHORT).show(); return
+                  }
+                  if (isExporting) return
+
+                  val inputSize = selectedVideoSizeBytes ?: queryVideoSize(uri).also { selectedVideoSizeBytes = it }
+                  if (inputSize != null && inputSize > maxInputVideoBytes) {
+                      AlertDialog.Builder(this)
+                          .setTitle("\u0627\u0644\u0641\u064A\u062F\u064A\u0648 \u0623\u0643\u0628\u0631 \u0645\u0646 \u0627\u0644\u062D\u062F \u0627\u0644\u0645\u062D\u062F\u062F")
+                          .setMessage("\u062D\u062C\u0645 \u0627\u0644\u0641\u064A\u062F\u064A\u0648 ${formatBytes(inputSize)}\u060C \u0628\u064A\u0646\u0645\u0627 \u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0641\u064A \u0647\u0630\u0647 \u0627\u0644\u0646\u0633\u062E\u0629 5 GB. \u0627\u062E\u062A\u0631 \u0645\u0644\u0641\u064B\u0627 \u0623\u0635\u063A\u0631.")
+                          .setPositiveButton("\u062D\u0633\u0646\u064B\u0627", null).show()
+                      return
+                  }
+
+                  // Export creates a temporary file, then copies it to the gallery. Check free space first.
+                  val tempDir = try { getExportDirectory() } catch (e: Exception) {
+                      Toast.makeText(this, e.message ?: "\u062A\u0639\u0630\u0651\u0631 \u062A\u062C\u0647\u064A\u0632 \u0645\u0633\u0627\u062D\u0629 \u0627\u0644\u062A\u0635\u062F\u064A\u0631", Toast.LENGTH_LONG).show()
+                      return
+                  }
+                  val freeBytes = tempDir.usableSpace
+                  val estimatedNeed = (inputSize ?: 500_000_000L) * 2L + 512_000_000L
+                  if (freeBytes < estimatedNeed) {
+                      AlertDialog.Builder(this)
+                          .setTitle("\u0645\u0633\u0627\u062D\u0629 \u0627\u0644\u062A\u062E\u0632\u064A\u0646 \u0642\u062F \u0644\u0627 \u062A\u0643\u0641\u064A")
+                          .setMessage("\u0627\u0644\u0645\u062A\u0627\u062D: ${formatBytes(freeBytes)}. \u064A\u064F\u0641\u0636\u0651\u0644 \u062A\u0648\u0641\u064A\u0631 \u0646\u062D\u0648 ${formatBytes(estimatedNeed)} \u0645\u0633\u0627\u062D\u0629 \u0641\u0627\u0631\u063A\u0629 \u0642\u0628\u0644 \u062A\u0635\u062F\u064A\u0631 \u0647\u0630\u0627 \u0627\u0644\u0641\u064A\u062F\u064A\u0648 \u0627\u0644\u0643\u0628\u064A\u0631\u060C \u0644\u0623\u0646 \u0627\u0644\u062A\u0637\u0628\u064A\u0642 \u064A\u0646\u0634\u0626 \u0645\u0644\u0641\u064B\u0627 \u0645\u0624\u0642\u062A\u064B\u0627 \u062B\u0645 \u064A\u062D\u0641\u0638 \u0646\u0633\u062E\u0629 \u0641\u064A \u0627\u0644\u0645\u0639\u0631\u0636.")
+                          .setPositiveButton("\u062D\u0633\u0646\u064B\u0627", null).show()
+                      return
+                  }
+
+                  if (Build.VERSION.SDK_INT <= 28 && ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                      ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 202)
+                      Toast.makeText(this, "\u0627\u0633\u0645\u062D \u0628\u062D\u0641\u0638 \u0627\u0644\u0645\u0644\u0641\u0627\u062A \u062B\u0645 \u0627\u0636\u063A\u0637 \u0627\u0644\u062A\u0635\u062F\u064A\u0631 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649", Toast.LENGTH_LONG).show(); return
+                  }
+                  val effects: List<Effect> = when (chosenStyle) {
+                      Style.NATURAL -> emptyList()
+                      Style.CINEMATIC -> listOf(Contrast(1.18f), Saturation(0.88f), Brightness(-0.035f))
+                      Style.COOL -> listOf(Contrast(1.10f), Saturation(0.90f), Brightness(-0.015f))
+                      Style.WARM -> listOf(Contrast(1.08f), Saturation(1.12f), Brightness(0.025f))
+                      Style.BRIGHT -> listOf(Brightness(0.12f), Contrast(1.04f))
+                      Style.MONO -> listOf(Saturation(0f), Contrast(1.12f))
+                  }
+                  val output = File(getExportDirectory(), "nexcut_${System.currentTimeMillis()}.mp4")
+                  isExporting = true
+                  progress.visibility = View.VISIBLE
+                  exportButton.alpha = 0.5f
+                  status.text = "\u062C\u0627\u0631\u064D \u0645\u0639\u0627\u0644\u062C\u0629 \u0627\u0644\u0641\u064A\u062F\u064A\u0648... \u0644\u0627 \u062A\u063A\u0644\u0642 \u0627\u0644\u062A\u0637\u0628\u064A\u0642."
+                  try {
+                      val startMs = ((trimStartInput.text.toString().trim().replace(',', '.').toDoubleOrNull() ?: 0.0) * 1000).toLong()
+                      val endSeconds = trimEndInput.text.toString().trim().replace(',', '.').toDoubleOrNull()
+                      val endMs = endSeconds?.let { (it * 1000).toLong() }
+                      if (startMs < 0 || (endMs != null && (endMs <= startMs || endMs <= 0))) {
+                          isExporting = false; progress.visibility = View.GONE; exportButton.alpha = 1f
+                          Toast.makeText(this, "\u062A\u0623\u0643\u062F \u0623\u0646 \u0648\u0642\u062A \u0627\u0644\u0646\u0647\u0627\u064A\u0629 \u0623\u0643\u0628\u0631 \u0645\u0646 \u0648\u0642\u062A \u0627\u0644\u0628\u062F\u0627\u064A\u0629", Toast.LENGTH_LONG).show()
+                          return
+                      }
+                      val mediaItem = if (startMs > 0 || endMs != null) {
+                          val clipping = MediaItem.ClippingConfiguration.Builder().setStartPositionMs(startMs).apply {
+                              if (endMs != null) setEndPositionMs(endMs)
+                          }.build()
+                          MediaItem.Builder().setUri(uri).setClippingConfiguration(clipping).build()
+                      } else MediaItem.fromUri(uri)
+                      val edited = EditedMediaItem.Builder(mediaItem).setEffects(Effects(emptyList(), effects)).build()
+                      val transformer = Transformer.Builder(this)
+                          .addListener(object : Transformer.Listener {
+                              override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                                  isExporting = false
+                                  progress.visibility = View.GONE
+                                  exportButton.alpha = 1f
+                                  try {
+                                      val saved = copyToGallery(output)
+                                      status.text = "\u0627\u0643\u062A\u0645\u0644 \u0627\u0644\u062A\u0635\u062F\u064A\u0631 \u0628\u0646\u062C\u0627\u062D.\n\u062A\u0645 \u062D\u0641\u0638 \u0627\u0644\u0641\u064A\u062F\u064A\u0648 \u0641\u064A Movies/NEXCUT_AI."
+                                      planStatus.text = "\u0622\u062E\u0631 \u062A\u0635\u062F\u064A\u0631: ${styleArabic(chosenStyle)}"
+                                      Toast.makeText(this@MainActivity, "\u062A\u0645 \u062D\u0641\u0638 \u0627\u0644\u0641\u064A\u062F\u064A\u0648 \u0641\u064A \u0627\u0644\u0645\u0639\u0631\u0636", Toast.LENGTH_LONG).show()
+                                  } catch (e: Exception) {
+                                      status.text = "\u0627\u0643\u062A\u0645\u0644\u062A \u0627\u0644\u0645\u0639\u0627\u0644\u062C\u0629 \u0644\u0643\u0646 \u062A\u0639\u0630\u0651\u0631 \u0627\u0644\u062D\u0641\u0638 \u0641\u064A \u0627\u0644\u0645\u0639\u0631\u0636: ${e.message ?: "\u062E\u0637\u0623 \u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641"}"
+                                  } finally { output.delete() }
+                              }
+                              override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
+                                  isExporting = false
+                                  progress.visibility = View.GONE
+                                  exportButton.alpha = 1f
+                                  status.text = "\u0641\u0634\u0644 \u062A\u0635\u062F\u064A\u0631 \u0627\u0644\u0641\u064A\u062F\u064A\u0648: ${exportException.message ?: "\u0635\u064A\u063A\u0629 \u063A\u064A\u0631 \u0645\u062F\u0639\u0648\u0645\u0629 \u0623\u0648 \u0645\u0633\u0627\u062D\u0629 \u063A\u064A\u0631 \u0643\u0627\u0641\u064A\u0629"}"
+                                  output.delete()
+                              }
+                          }).build()
+                      lastOutput = output
+                      transformer.start(edited, output.absolutePath)
+                  } catch (e: Exception) {
+                      isExporting = false; progress.visibility = View.GONE; exportButton.alpha = 1f
+                      status.text = "\u062A\u0639\u0630\u0651\u0631 \u0628\u062F\u0621 \u0627\u0644\u062A\u0635\u062F\u064A\u0631: ${e.message ?: "\u062E\u0637\u0623 \u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641"}"
+                      output.delete()
+                  }
+              }
+
+              private fun queryVideoSize(uri: Uri): Long? {
+                  return try {
+                      contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                          if (cursor.moveToFirst()) {
+                              val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+                              if (index >= 0 && !cursor.isNull(index)) cursor.getLong(index) else null
+                          } else null
+                      }
+                  } catch (_: Exception) { null }
+              }
+
+              private fun getExportDirectory(): File {
+                  val base = getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: cacheDir
+                  val dir = File(base, "NEXCUT_AI_Temp")
+                  if (!dir.exists() && !dir.mkdirs()) throw IllegalStateException("\u062A\u0639\u0630\u0651\u0631 \u0625\u0646\u0634\u0627\u0621 \u0645\u062C\u0644\u062F \u0627\u0644\u062A\u0635\u062F\u064A\u0631 \u0627\u0644\u0645\u0624\u0642\u062A")
+                  return dir
+              }
+
+              private fun formatBytes(bytes: Long): String {
+                  if (bytes < 1_000_000_000L) return String.format(java.util.Locale.US, "%.0f MB", bytes / 1_000_000.0)
+                  return String.format(java.util.Locale.US, "%.2f GB", bytes / 1_000_000_000.0)
+              }
+
+              private fun copyToGallery(file: File): Uri {
+                  val name = "NEXCUT_${System.currentTimeMillis()}.mp4"
+                  val values = ContentValues().apply {
+                      put(MediaStore.Video.Media.DISPLAY_NAME, name)
+                      put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                          put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/NEXCUT_AI")
+                          put(MediaStore.Video.Media.IS_PENDING, 1)
+                      }
+                  }
+                  val collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                  val uri = contentResolver.insert(collection, values) ?: throw IllegalStateException("\u0644\u0645 \u064A\u0633\u062A\u0637\u0639 \u0623\u0646\u062F\u0631\u0648\u064A\u062F \u0625\u0646\u0634\u0627\u0621 \u0645\u0644\u0641 \u0627\u0644\u0641\u064A\u062F\u064A\u0648")
+                  try {
+                      contentResolver.openOutputStream(uri)?.use { output -> FileInputStream(file).use { input -> input.copyTo(output, 1024 * 1024) } }
+                          ?: throw IllegalStateException("\u062A\u0639\u0630\u0651\u0631 \u0641\u062A\u062D \u0645\u0644\u0641 \u0627\u0644\u062D\u0641\u0638")
+                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                          val done = ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }
+                          contentResolver.update(uri, done, null, null)
+                      }
+                      return uri
+                  } catch (e: Exception) {
+                      contentResolver.delete(uri, null, null)
+                      throw e
+                  }
+              }
+
+              private fun styleArabic(style: Style) = when (style) {
+                  Style.NATURAL -> "\u0637\u0628\u064A\u0639\u064A"
+                  Style.CINEMATIC -> "\u0633\u064A\u0646\u0645\u0627\u0626\u064A"
+                  Style.COOL -> "\u0623\u0644\u0648\u0627\u0646 \u0628\u0627\u0631\u062F\u0629"
+                  Style.WARM -> "\u0623\u0644\u0648\u0627\u0646 \u062F\u0627\u0641\u0626\u0629"
+                  Style.BRIGHT -> "\u062A\u0641\u062A\u064A\u062D \u0627\u0644\u0625\u0636\u0627\u0621\u0629"
+                  Style.MONO -> "\u0623\u0628\u064A\u0636 \u0648\u0623\u0633\u0648\u062F"
+              }
+
+              private fun button(label: String, color: Int): TextView = TextView(this).apply {
+                  text = label; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                  setTextColor(Color.WHITE); setPadding(dp(14), dp(13), dp(14), dp(13)); background = rounded(color, 12)
+              }
+
+              private fun text(value: String, size: Float, color: Int, bold: Boolean): TextView = TextView(this).apply {
+                  text = value; textSize = size; setTextColor(color); if (bold) typeface = Typeface.DEFAULT_BOLD
+                  textDirection = View.TEXT_DIRECTION_FIRST_STRONG
+              }
+
+              private fun rounded(color: Int, radius: Int): GradientDrawable = GradientDrawable().apply {
+                  setColor(color); cornerRadius = dp(radius).toFloat()
+              }
+
+              private fun marginTop(top: Int): LinearLayout.LayoutParams = LinearLayout.LayoutParams(
+                  ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+              ).apply { topMargin = dp(top) }
+
+              private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+          }
+          EOF_NEX
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.9' }
+      - name: Accept Android licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with: { name: NEXCUT-AI-debug-apk, path: app/build/outputs/apk/debug/app-debug.apk }
